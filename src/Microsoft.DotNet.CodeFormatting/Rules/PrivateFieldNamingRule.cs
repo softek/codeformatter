@@ -63,7 +63,10 @@ namespace Microsoft.DotNet.CodeFormatting.Rules
                     var semanticModel = await solution.GetDocument(documentId).GetSemanticModelAsync(cancellationToken);
                     var root = await semanticModel.SyntaxTree.GetRootAsync(cancellationToken);
                     var declaration = root.GetAnnotatedNodes(s_markerAnnotation).ElementAt(i);
-                    var fieldSymbol = (IFieldSymbol)semanticModel.GetDeclaredSymbol(declaration, cancellationToken);
+
+                    // Make note, VB represents "fields" marked as "WithEvents" as properties, so don't be
+                    // tempted to treat this as a IFieldSymbol. We only need the name, so ISymbol is enough.
+                    var fieldSymbol = semanticModel.GetDeclaredSymbol(declaration, cancellationToken);
                     var newName = GetNewFieldName(fieldSymbol);
 
                     // Can happen with pathologically bad field names like _
@@ -79,12 +82,18 @@ namespace Microsoft.DotNet.CodeFormatting.Rules
                 return solution;
             }
 
-            private static string GetNewFieldName(IFieldSymbol fieldSymbol)
+            private static string GetNewFieldName(ISymbol fieldSymbol)
             {
                 var name = fieldSymbol.Name.Trim('_');
                 if (name.Length > 2 && char.IsLetter(name[0]) && name[1] == '_')
                 {
                     name = name.Substring(2);
+                }
+
+                // Some .NET code uses "ts_" prefix for thread static
+                if (name.Length > 3 && name.StartsWith("ts_", StringComparison.OrdinalIgnoreCase))
+                {
+                    name = name.Substring(3);
                 }
 
                 if (name.Length == 0)
